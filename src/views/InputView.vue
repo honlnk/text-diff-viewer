@@ -164,8 +164,10 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import type { FileData } from '@/types/diff'
+import { useDiffStore } from '@/stores/diff'
 
 const router = useRouter()
+const diffStore = useDiffStore()
 
 // 数据状态
 const data1 = ref<FileData>({ content: '', type: 'text' })
@@ -247,14 +249,12 @@ const handleCompare = async () => {
     isComparing.value = true
     errorMessage.value = ''
 
-    // 将数据传递到结果页面
-    router.push({
-      name: 'result',
-      state: {
-        data1: data1.value,
-        data2: data2.value
-      }
-    })
+    // 使用Pinia store存储数据
+    diffStore.setData(data1.value, data2.value)
+
+    // 跳转到结果页面
+    await router.push('/result')
+
   } catch (error) {
     console.error('对比过程出错:', error)
     errorMessage.value = '对比过程出错，请稍后重试'

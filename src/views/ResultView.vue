@@ -62,7 +62,26 @@
 
     <!-- 差异结果 -->
     <div class="card-base">
-      <h3 class="text-lg font-medium text-gray-900 mb-4">差异结果</h3>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-medium text-gray-900">差异结果</h3>
+
+        <div class="flex items-center space-x-2">
+          <el-button
+            size="small"
+            @click="toggleDetails"
+            :type="showDetails ? 'primary' : 'default'"
+          >
+            {{ showDetails ? '隐藏详情' : '显示详情' }}
+          </el-button>
+          <el-button
+            size="small"
+            @click="recalculateDiff"
+            :loading="loading"
+          >
+            重新计算
+          </el-button>
+        </div>
+      </div>
 
       <!-- 加载状态 -->
       <div v-if="loading" class="text-center py-8">
@@ -70,22 +89,17 @@
           <Loading />
         </el-icon>
         <p class="mt-2 text-gray-600">正在计算差异...</p>
+        <div class="mt-2 text-sm text-gray-500">
+          使用字符级精确对比算法，请稍候...
+        </div>
       </div>
 
       <!-- 差异展示 -->
-      <div v-else-if="diffResult" class="space-y-4">
-        <div class="text-sm text-gray-600 mb-4">
-          编辑距离: {{ diffResult.editDistance }} | 相似度: {{ diffResult.similarity }}%
-        </div>
-
-        <!-- 差异可视化 -->
-        <div class="border rounded-lg p-4 bg-gray-50">
-          <div class="text-sm leading-relaxed">
-            <!-- 这里将实现具体的差异可视化逻辑 -->
-            <div class="text-gray-600">差异可视化功能将在下一阶段实现</div>
-          </div>
-        </div>
-      </div>
+      <DiffViewer
+        v-else-if="diffResult"
+        :diff-result="diffResult"
+        :show-details="showDetails"
+      />
 
       <!-- 错误状态 -->
       <div v-else-if="error" class="text-center py-8">
@@ -93,7 +107,13 @@
           :title="error"
           type="error"
           :closable="false"
+          show-icon
         />
+        <div class="mt-4">
+          <el-button @click="goBack" size="small">
+            返回重新输入
+          </el-button>
+        </div>
       </div>
     </div>
   </div>
@@ -104,9 +124,14 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Download, Loading } from '@element-plus/icons-vue'
+import DiffViewer from '@/components/DiffViewer.vue'
 import type { FileData, DiffResult, DiffStats } from '@/types/diff'
+import { calculateDiff as calculateTextDiff, calculateDiffStats } from '@/utils/diffAlgorithm'
+import { validateTextContent } from '@/utils/textProcessor'
+import { useDiffStore } from '@/stores/diff'
 
 const router = useRouter()
+const diffStore = useDiffStore()
 
 // 状态
 const loading = ref(false)
@@ -115,6 +140,7 @@ const data1 = ref<FileData>()
 const data2 = ref<FileData>()
 const diffResult = ref<DiffResult>()
 const diffStats = ref<DiffStats>()
+const showDetails = ref(false)
 
 // 格式化文本长度
 const formatTextLength = (text: string): string => {
@@ -138,7 +164,7 @@ const exportHTML = () => {
   ElMessage.info('HTML导出功能将在下一阶段实现')
 }
 
-// 计算差异（临时版本，下一阶段将实现真实的差异算法）
+// 计算差异（使用真实的diff算法）
 const calculateDiff = async () => {
   if (!data1.value?.content || !data2.value?.content) {
     error.value = '缺少对比数据'
@@ -149,41 +175,63 @@ const calculateDiff = async () => {
   error.value = ''
 
   try {
-    // 模拟计算延迟
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // 验证文本内容
+    const validation1 = validateTextContent(data1.value.content)
+    const validation2 = validateTextContent(data2.value.content)
 
-    // 临时数据，下一阶段将替换为真实算法
-    diffResult.value = {
-      editDistance: Math.floor(Math.random() * 100),
-      diffs: [],
-      similarity: Math.floor(Math.random() * 50) + 50,
-      text1: data1.value.content,
-      text2: data2.value.content
+    if (!validation1.isValid || !validation2.isValid) {
+      const allErrors = [...validation1.errors, ...validation2.errors]
+      error.value = `文本验证失败: ${allErrors.join(', ')}`
+      return
     }
+
+    // 显示警告信息
+    const allWarnings = [...validation1.warnings, ...validation2.warnings]
+    if (allWarnings.length > 0) {
+      console.warn('文本警告:', allWarnings)
+    }
+
+    // 使用真实的差异算法
+    const result = await calculateTextDiff(data1.value.content, data2.value.content, {
+      timeout: 10000,
+      precision: 'character',
+      ignoreWhitespace: false,
+      ignoreCase: false
+    })
+
+    diffResult.value = result
 
     // 计算统计信息
-    diffStats.value = {
-      additions: Math.floor(Math.random() * 10),
-      deletions: Math.floor(Math.random() * 10),
-      modifications: Math.floor(Math.random() * 5),
-      similarity: diffResult.value.similarity
-    }
+    diffStats.value = calculateDiffStats(result)
 
   } catch (err) {
     console.error('计算差异时出错:', err)
-    error.value = '计算差异时出错，请稍后重试'
+    error.value = err instanceof Error ? err.message : '计算差异时出错，请稍后重试'
   } finally {
     loading.value = false
   }
 }
 
+// 切换详情显示
+const toggleDetails = () => {
+  showDetails.value = !showDetails.value
+}
+
+// 重新计算差异
+const recalculateDiff = () => {
+  if (data1.value?.content && data2.value?.content) {
+    calculateDiff()
+  }
+}
+
 // 组件挂载时获取数据并计算差异
 onMounted(() => {
-  // 从路由状态获取数据
-  const state = history.state
-  if (state?.data1 && state?.data2) {
-    data1.value = state.data1
-    data2.value = state.data2
+  // 从Pinia store获取数据
+  const storeData = diffStore.getData()
+
+  if (storeData.data1 && storeData.data2) {
+    data1.value = storeData.data1
+    data2.value = storeData.data2
     calculateDiff()
   } else {
     error.value = '未找到对比数据，请重新输入'
