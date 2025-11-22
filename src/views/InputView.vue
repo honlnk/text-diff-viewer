@@ -40,7 +40,7 @@
             :auto-upload="false"
             :show-file-list="false"
             accept=".txt,.md,.csv"
-            :on-change="(file) => handleFileChange(file, 1)"
+            :on-change="(file: UploadFile) => handleFileChange(file, 1)"
           >
             <div class="text-center">
               <el-icon class="text-4xl text-gray-400 mb-2">
@@ -101,7 +101,7 @@
             :auto-upload="false"
             :show-file-list="false"
             accept=".txt,.md,.csv"
-            :on-change="(file) => handleFileChange(file, 2)"
+            :on-change="(file: UploadFile) => handleFileChange(file, 2)"
           >
             <div class="text-center">
               <el-icon class="text-4xl text-gray-400 mb-2">
@@ -163,6 +163,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
+import type { UploadFile } from 'element-plus'
 import type { FileData } from '@/types/diff'
 import { useDiffStore } from '@/stores/diff'
 
@@ -190,7 +191,7 @@ const switchInputType = (dataNum: 1 | 2, type: 'file' | 'text') => {
 }
 
 // 处理文件变化
-const handleFileChange = (file: { name: string; size: number; raw: File }, dataNum: 1 | 2) => {
+const handleFileChange = (file: UploadFile, dataNum: 1 | 2) => {
   const validExtensions = ['.txt', '.md', '.csv']
 
   // 检查文件类型
@@ -200,9 +201,9 @@ const handleFileChange = (file: { name: string; size: number; raw: File }, dataN
     return
   }
 
-  // 检查文件大小 (10MB)
-  if (file.size > 10 * 1024 * 1024) {
-    ElMessage.error('文件大小不能超过 10MB')
+  // 检查文件大小和原始文件是否存在
+  if (!file.raw || !file.size || file.size > 10 * 1024 * 1024) {
+    ElMessage.error(file.size && file.size > 10 * 1024 * 1024 ? '文件大小不能超过 10MB' : '文件无效，请重新选择文件')
     return
   }
 
