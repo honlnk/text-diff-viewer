@@ -5,7 +5,7 @@
 
 import { DIFF_DELETE, DIFF_INSERT, DIFF_EQUAL } from 'diff-match-patch'
 import type { DiffResult, DiffRecord, DiffStats } from '@/types/diff'
-import { preprocessText, splitIntoChars, flattenText, unflattenText, calculateTextStats } from './textProcessor'
+import { preprocessText, splitIntoChars } from './textProcessor'
 
 /**
  * 差异算法配置选项
@@ -76,7 +76,7 @@ export async function calculateDiff(
     dmp.diff_cleanupSemantic(diffs)
 
     // 转换为我们的格式
-    const diffRecords = convertDiffsToRecords(diffs, chars1, chars2, finalOptions.precision)
+    const diffRecords = convertDiffsToRecords(diffs)
 
     // 计算编辑距离
     const editDistance = calculateEditDistance(diffs)
@@ -117,10 +117,7 @@ function getSplitFunction(precision: DiffOptions['precision']): (text: string) =
  * 将diff-match-patch的差异结果转换为我们的DiffRecord格式
  */
 function convertDiffsToRecords(
-  diffs: [number, string][],
-  chars1: string[],
-  chars2: string[],
-  precision: DiffOptions['precision']
+  diffs: [number, string][]
 ): DiffRecord[] {
   const records: DiffRecord[] = []
   let position1 = 0
@@ -184,7 +181,7 @@ function calculateSimilarity(text1: string, text2: string, editDistance: number)
  * 计算详细的差异统计信息
  */
 export function calculateDiffStats(diffResult: DiffResult): DiffStats {
-  const { diffs, text1, text2 } = diffResult
+  const { diffs } = diffResult
 
   let additions = 0
   let deletions = 0
@@ -192,41 +189,49 @@ export function calculateDiffStats(diffResult: DiffResult): DiffStats {
 
   // 分析差异记录以确定修改数量
   const sortedDiffs = [...diffs].sort((a, b) => a.position - b.position)
+  const processedIndices = new Set<number>()
 
   for (let i = 0; i < sortedDiffs.length; i++) {
+    // 跳过已处理的记录
+    if (processedIndices.has(i)) {
+      continue
+    }
+
     const diff = sortedDiffs[i]
 
     if (diff.type === 'add') {
       // 查找相邻的删除操作，可能组成修改操作
-      const adjacentDelete = sortedDiffs.find((d, idx) =>
-        idx !== i && d.type === 'delete' &&
-        Math.abs(d.position - diff.position) <= 5 // 容忍一定距离
-      )
+      let adjacentDeleteIndex = -1
+      for (let j = 0; j < sortedDiffs.length; j++) {
+        if (i !== j && !processedIndices.has(j) && sortedDiffs[j].type === 'delete') {
+          if (Math.abs(sortedDiffs[j].position - diff.position) <= 5) {
+            adjacentDeleteIndex = j
+            break
+          }
+        }
+      }
 
-      if (adjacentDelete) {
+      if (adjacentDeleteIndex !== -1) {
+        // 找到相邻的删除操作，计为修改
         modifications++
-        adjacentDelete.type = 'modify' as any // 标记为已处理的修改
+        processedIndices.add(i) // 标记当前add记录为已处理
+        processedIndices.add(adjacentDeleteIndex) // 标记对应的delete记录为已处理
       } else {
+        // 没有找到相邻的删除操作，计为新增
         additions++
       }
-    } else if (diff.type === 'delete' && diff.type !== 'modify') {
+    } else if (diff.type === 'delete') {
+      // 删除操作（如果没有被上面的add操作配对）
       deletions++
+      processedIndices.add(i)
     }
   }
 
-  // 重新计算修改数量（更准确的方法）
-  const actualModifications = Math.min(
-    diffs.filter(d => d.type === 'add').length,
-    diffs.filter(d => d.type === 'delete').length
-  )
-
-  const actualAdditions = diffs.filter(d => d.type === 'add').length - actualModifications
-  const actualDeletions = diffs.filter(d => d.type === 'delete').length - actualModifications
-
+  // 确保结果不为负数
   return {
-    additions: Math.max(0, actualAdditions),
-    deletions: Math.max(0, actualDeletions),
-    modifications: actualModifications,
+    additions: Math.max(0, additions),
+    deletions: Math.max(0, deletions),
+    modifications: Math.max(0, modifications),
     similarity: diffResult.similarity
   }
 }
