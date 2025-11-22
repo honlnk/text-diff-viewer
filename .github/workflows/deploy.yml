@@ -16,6 +16,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  deployments: write
 
 # 允许一个并发的部署
 concurrency:
