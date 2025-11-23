@@ -1,158 +1,3 @@
-<template>
-  <div class="diff-viewer">
-    <!-- 差异显示模式切换 -->
-    <div class="mb-4 flex items-center justify-between">
-      <div class="flex items-center space-x-2">
-        <span class="text-sm text-gray-600">显示模式:</span>
-        <el-radio-group v-model="displayMode" size="small">
-          <el-radio-button label="inline">并排对比</el-radio-button>
-          <el-radio-button label="unified">统一视图</el-radio-button>
-        </el-radio-group>
-      </div>
-
-      <div class="flex items-center space-x-2">
-        <el-checkbox v-model="showWhitespace" size="small">
-          显示空白字符
-        </el-checkbox>
-        <el-checkbox v-model="showLineNumbers" size="small">
-          显示行号
-        </el-checkbox>
-      </div>
-    </div>
-
-    <!-- 统计信息摘要 -->
-    <div class="mb-4 p-3 bg-gray-50 rounded-lg">
-      <div class="flex items-center justify-between text-sm">
-        <div class="flex items-center space-x-4">
-          <span class="flex items-center">
-            <span class="w-3 h-3 bg-red-500 rounded mr-1"></span>
-            删除 {{ stats.deletions }} 处
-          </span>
-          <span class="flex items-center">
-            <span class="w-3 h-3 bg-green-500 rounded mr-1"></span>
-            新增 {{ stats.additions }} 处
-          </span>
-          <span class="flex items-center">
-            <span class="w-3 h-3 bg-blue-500 rounded mr-1"></span>
-            修改 {{ stats.modifications }} 处
-          </span>
-        </div>
-        <span class="text-gray-600">
-          编辑距离: {{ diffResult.editDistance }} | 相似度: {{ diffResult.similarity }}%
-        </span>
-      </div>
-    </div>
-
-    <!-- 并排对比模式 -->
-    <div v-if="displayMode === 'inline'" class="inline-diff">
-      <div class="grid grid-cols-2 gap-4">
-        <!-- 原文本 -->
-        <div class="original-text border rounded-lg overflow-hidden">
-          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
-            原文本 ({{ originalCharCount }} 字符)
-          </div>
-          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto">
-            <div
-              v-for="(segment, index) in originalSegments"
-              :key="index"
-              :class="getSegmentClass(segment.type)"
-              class="inline"
-            >
-              <span v-if="showWhitespace" class="whitespace-debug">
-                {{ displayWhitespace(segment.content) }}
-              </span>
-              <span v-else>{{ segment.content }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 修改后文本 -->
-        <div class="modified-text border rounded-lg overflow-hidden">
-          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
-            修改后文本 ({{ modifiedCharCount }} 字符)
-          </div>
-          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto">
-            <div
-              v-for="(segment, index) in modifiedSegments"
-              :key="index"
-              :class="getSegmentClass(segment.type)"
-              class="inline"
-            >
-              <span v-if="showWhitespace" class="whitespace-debug">
-                {{ displayWhitespace(segment.content) }}
-              </span>
-              <span v-else>{{ segment.content }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 统一视图模式 -->
-    <div v-else class="unified-diff border rounded-lg overflow-hidden">
-      <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
-        统一差异视图
-      </div>
-      <div class="max-h-96 overflow-y-auto">
-        <div
-          v-for="(line, index) in unifiedLines"
-          :key="index"
-          class="flex border-b border-gray-100"
-          :class="getLineClass(line.type)"
-        >
-          <!-- 行号 -->
-          <div v-if="showLineNumbers" class="line-numbers flex-none px-3 py-2 text-xs text-gray-500 border-r">
-            <span class="block w-12 text-right">{{ line.originalLine !== undefined ? line.originalLine + 1 : '' }}</span>
-            <span class="block w-12 text-right">{{ line.modifiedLine !== undefined ? line.modifiedLine + 1 : '' }}</span>
-          </div>
-
-          <!-- 内容 -->
-          <div class="flex-1 px-4 py-2 font-mono text-sm">
-            <span
-              v-for="(segment, segIndex) in line.segments"
-              :key="segIndex"
-              :class="getSegmentClass(segment.type)"
-              class="inline"
-            >
-              <span v-if="showWhitespace" class="whitespace-debug">
-                {{ displayWhitespace(segment.content) }}
-              </span>
-              <span v-else>{{ segment.content }}</span>
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 差异详细信息 -->
-    <div v-if="showDetails" class="mt-4">
-      <el-collapse>
-        <el-collapse-item title="差异详细信息" name="details">
-          <div class="text-sm space-y-2">
-            <div v-for="(diff, index) in sortedDiffs" :key="index" class="p-2 border rounded">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-medium">{{ getDiffTypeLabel(diff.type) }}</span>
-                <span class="text-gray-500">位置: {{ diff.position }}</span>
-              </div>
-              <div class="bg-gray-50 p-2 rounded font-mono text-xs">
-                <div v-if="diff.type === 'delete'" class="text-red-600">
-                  删除: {{ JSON.stringify(diff.content) }}
-                </div>
-                <div v-else-if="diff.type === 'add'" class="text-green-600">
-                  新增: {{ JSON.stringify(diff.content) }}
-                </div>
-                <div v-else-if="diff.type === 'modify'" class="text-blue-600">
-                  修改: {{ JSON.stringify(diff.originalContent) }} → {{ JSON.stringify(diff.content) }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </el-collapse-item>
-      </el-collapse>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { DiffResult, DiffRecord } from '@/types/diff'
@@ -354,6 +199,161 @@ function createUnifiedView(
   return lines
 }
 </script>
+
+<template>
+  <div class="diff-viewer">
+    <!-- 差异显示模式切换 -->
+    <div class="mb-4 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="text-sm text-gray-600">显示模式:</span>
+        <el-radio-group v-model="displayMode" size="small">
+          <el-radio-button label="inline">并排对比</el-radio-button>
+          <el-radio-button label="unified">统一视图</el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <el-checkbox v-model="showWhitespace" size="small">
+          显示空白字符
+        </el-checkbox>
+        <el-checkbox v-model="showLineNumbers" size="small">
+          显示行号
+        </el-checkbox>
+      </div>
+    </div>
+
+    <!-- 统计信息摘要 -->
+    <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+      <div class="flex items-center justify-between text-sm">
+        <div class="flex items-center space-x-4">
+          <span class="flex items-center">
+            <span class="w-3 h-3 bg-red-500 rounded mr-1"></span>
+            删除 {{ stats.deletions }} 处
+          </span>
+          <span class="flex items-center">
+            <span class="w-3 h-3 bg-green-500 rounded mr-1"></span>
+            新增 {{ stats.additions }} 处
+          </span>
+          <span class="flex items-center">
+            <span class="w-3 h-3 bg-blue-500 rounded mr-1"></span>
+            修改 {{ stats.modifications }} 处
+          </span>
+        </div>
+        <span class="text-gray-600">
+          编辑距离: {{ diffResult.editDistance }} | 相似度: {{ diffResult.similarity }}%
+        </span>
+      </div>
+    </div>
+
+    <!-- 并排对比模式 -->
+    <div v-if="displayMode === 'inline'" class="inline-diff">
+      <div class="grid grid-cols-2 gap-4">
+        <!-- 原文本 -->
+        <div class="original-text border rounded-lg overflow-hidden">
+          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
+            原文本 ({{ originalCharCount }} 字符)
+          </div>
+          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto">
+            <div
+              v-for="(segment, index) in originalSegments"
+              :key="index"
+              :class="getSegmentClass(segment.type)"
+              class="inline"
+            >
+              <span v-if="showWhitespace" class="whitespace-debug">
+                {{ displayWhitespace(segment.content) }}
+              </span>
+              <span v-else>{{ segment.content }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 修改后文本 -->
+        <div class="modified-text border rounded-lg overflow-hidden">
+          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
+            修改后文本 ({{ modifiedCharCount }} 字符)
+          </div>
+          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto">
+            <div
+              v-for="(segment, index) in modifiedSegments"
+              :key="index"
+              :class="getSegmentClass(segment.type)"
+              class="inline"
+            >
+              <span v-if="showWhitespace" class="whitespace-debug">
+                {{ displayWhitespace(segment.content) }}
+              </span>
+              <span v-else>{{ segment.content }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 统一视图模式 -->
+    <div v-else class="unified-diff border rounded-lg overflow-hidden">
+      <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
+        统一差异视图
+      </div>
+      <div class="max-h-96 overflow-y-auto">
+        <div
+          v-for="(line, index) in unifiedLines"
+          :key="index"
+          class="flex border-b border-gray-100"
+          :class="getLineClass(line.type)"
+        >
+          <!-- 行号 -->
+          <div v-if="showLineNumbers" class="line-numbers flex-none px-3 py-2 text-xs text-gray-500 border-r">
+            <span class="block w-12 text-right">{{ line.originalLine !== undefined ? line.originalLine + 1 : '' }}</span>
+            <span class="block w-12 text-right">{{ line.modifiedLine !== undefined ? line.modifiedLine + 1 : '' }}</span>
+          </div>
+
+          <!-- 内容 -->
+          <div class="flex-1 px-4 py-2 font-mono text-sm">
+            <span
+              v-for="(segment, segIndex) in line.segments"
+              :key="segIndex"
+              :class="getSegmentClass(segment.type)"
+              class="inline"
+            >
+              <span v-if="showWhitespace" class="whitespace-debug">
+                {{ displayWhitespace(segment.content) }}
+              </span>
+              <span v-else>{{ segment.content }}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 差异详细信息 -->
+    <div v-if="showDetails" class="mt-4">
+      <el-collapse>
+        <el-collapse-item title="差异详细信息" name="details">
+          <div class="text-sm space-y-2">
+            <div v-for="(diff, index) in sortedDiffs" :key="index" class="p-2 border rounded">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-medium">{{ getDiffTypeLabel(diff.type) }}</span>
+                <span class="text-gray-500">位置: {{ diff.position }}</span>
+              </div>
+              <div class="bg-gray-50 p-2 rounded font-mono text-xs">
+                <div v-if="diff.type === 'delete'" class="text-red-600">
+                  删除: {{ JSON.stringify(diff.content) }}
+                </div>
+                <div v-else-if="diff.type === 'add'" class="text-green-600">
+                  新增: {{ JSON.stringify(diff.content) }}
+                </div>
+                <div v-else-if="diff.type === 'modify'" class="text-blue-600">
+                  修改: {{ JSON.stringify(diff.originalContent) }} → {{ JSON.stringify(diff.content) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .diff-viewer {

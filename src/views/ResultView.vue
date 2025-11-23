@@ -1,3 +1,123 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { ArrowLeft, Download, Loading } from '@element-plus/icons-vue'
+import DiffViewer from '@/components/DiffViewer.vue'
+import type { FileData, DiffResult, DiffStats } from '@/types/diff'
+import { calculateDiff as calculateTextDiff, calculateDiffStats } from '@/utils/diffAlgorithm'
+import { validateTextContent } from '@/utils/textProcessor'
+import { useDiffStore } from '@/stores/diff'
+
+const router = useRouter()
+const diffStore = useDiffStore()
+
+// 状态
+const loading = ref(false)
+const error = ref('')
+const data1 = ref<FileData>()
+const data2 = ref<FileData>()
+const diffResult = ref<DiffResult>()
+const diffStats = ref<DiffStats>()
+const showDetails = ref(false)
+
+// 格式化文本长度
+const formatTextLength = (text: string): string => {
+  const length = text.length
+  if (length < 1000) {
+    return `${length} 字符`
+  } else if (length < 1000000) {
+    return `${(length / 1000).toFixed(1)} K 字符`
+  } else {
+    return `${(length / 1000000).toFixed(1)} M 字符`
+  }
+}
+
+// 返回输入页面
+const goBack = () => {
+  router.push('/')
+}
+
+// 导出HTML
+const exportHTML = () => {
+  ElMessage.info('HTML导出功能将在下一阶段实现')
+}
+
+// 计算差异（使用真实的diff算法）
+const calculateDiff = async () => {
+  if (!data1.value?.content || !data2.value?.content) {
+    error.value = '缺少对比数据'
+    return
+  }
+
+  loading.value = true
+  error.value = ''
+
+  try {
+    // 验证文本内容
+    const validation1 = validateTextContent(data1.value.content)
+    const validation2 = validateTextContent(data2.value.content)
+
+    if (!validation1.isValid || !validation2.isValid) {
+      const allErrors = [...validation1.errors, ...validation2.errors]
+      error.value = `文本验证失败: ${allErrors.join(', ')}`
+      return
+    }
+
+    // 显示警告信息
+    const allWarnings = [...validation1.warnings, ...validation2.warnings]
+    if (allWarnings.length > 0) {
+      console.warn('文本警告:', allWarnings)
+    }
+
+    // 使用真实的差异算法
+    const result = await calculateTextDiff(data1.value.content, data2.value.content, {
+      timeout: 10000,
+      precision: 'character',
+      ignoreWhitespace: false,
+      ignoreCase: false
+    })
+
+    diffResult.value = result
+
+    // 计算统计信息
+    diffStats.value = calculateDiffStats(result)
+
+  } catch (err) {
+    console.error('计算差异时出错:', err)
+    error.value = err instanceof Error ? err.message : '计算差异时出错，请稍后重试'
+  } finally {
+    loading.value = false
+  }
+}
+
+// 切换详情显示
+const toggleDetails = () => {
+  showDetails.value = !showDetails.value
+}
+
+// 重新计算差异
+const recalculateDiff = () => {
+  if (data1.value?.content && data2.value?.content) {
+    calculateDiff()
+  }
+}
+
+// 组件挂载时获取数据并计算差异
+onMounted(() => {
+  // 从Pinia store获取数据
+  const storeData = diffStore.getData()
+
+  if (storeData.data1 && storeData.data2) {
+    data1.value = storeData.data1
+    data2.value = storeData.data2
+    calculateDiff()
+  } else {
+    error.value = '未找到对比数据，请重新输入'
+  }
+})
+</script>
+
 <template>
   <div class="space-y-6">
     <!-- 工具栏 -->
@@ -118,123 +238,3 @@
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { ArrowLeft, Download, Loading } from '@element-plus/icons-vue'
-import DiffViewer from '@/components/DiffViewer.vue'
-import type { FileData, DiffResult, DiffStats } from '@/types/diff'
-import { calculateDiff as calculateTextDiff, calculateDiffStats } from '@/utils/diffAlgorithm'
-import { validateTextContent } from '@/utils/textProcessor'
-import { useDiffStore } from '@/stores/diff'
-
-const router = useRouter()
-const diffStore = useDiffStore()
-
-// 状态
-const loading = ref(false)
-const error = ref('')
-const data1 = ref<FileData>()
-const data2 = ref<FileData>()
-const diffResult = ref<DiffResult>()
-const diffStats = ref<DiffStats>()
-const showDetails = ref(false)
-
-// 格式化文本长度
-const formatTextLength = (text: string): string => {
-  const length = text.length
-  if (length < 1000) {
-    return `${length} 字符`
-  } else if (length < 1000000) {
-    return `${(length / 1000).toFixed(1)} K 字符`
-  } else {
-    return `${(length / 1000000).toFixed(1)} M 字符`
-  }
-}
-
-// 返回输入页面
-const goBack = () => {
-  router.push('/')
-}
-
-// 导出HTML
-const exportHTML = () => {
-  ElMessage.info('HTML导出功能将在下一阶段实现')
-}
-
-// 计算差异（使用真实的diff算法）
-const calculateDiff = async () => {
-  if (!data1.value?.content || !data2.value?.content) {
-    error.value = '缺少对比数据'
-    return
-  }
-
-  loading.value = true
-  error.value = ''
-
-  try {
-    // 验证文本内容
-    const validation1 = validateTextContent(data1.value.content)
-    const validation2 = validateTextContent(data2.value.content)
-
-    if (!validation1.isValid || !validation2.isValid) {
-      const allErrors = [...validation1.errors, ...validation2.errors]
-      error.value = `文本验证失败: ${allErrors.join(', ')}`
-      return
-    }
-
-    // 显示警告信息
-    const allWarnings = [...validation1.warnings, ...validation2.warnings]
-    if (allWarnings.length > 0) {
-      console.warn('文本警告:', allWarnings)
-    }
-
-    // 使用真实的差异算法
-    const result = await calculateTextDiff(data1.value.content, data2.value.content, {
-      timeout: 10000,
-      precision: 'character',
-      ignoreWhitespace: false,
-      ignoreCase: false
-    })
-
-    diffResult.value = result
-
-    // 计算统计信息
-    diffStats.value = calculateDiffStats(result)
-
-  } catch (err) {
-    console.error('计算差异时出错:', err)
-    error.value = err instanceof Error ? err.message : '计算差异时出错，请稍后重试'
-  } finally {
-    loading.value = false
-  }
-}
-
-// 切换详情显示
-const toggleDetails = () => {
-  showDetails.value = !showDetails.value
-}
-
-// 重新计算差异
-const recalculateDiff = () => {
-  if (data1.value?.content && data2.value?.content) {
-    calculateDiff()
-  }
-}
-
-// 组件挂载时获取数据并计算差异
-onMounted(() => {
-  // 从Pinia store获取数据
-  const storeData = diffStore.getData()
-
-  if (storeData.data1 && storeData.data2) {
-    data1.value = storeData.data1
-    data2.value = storeData.data2
-    calculateDiff()
-  } else {
-    error.value = '未找到对比数据，请重新输入'
-  }
-})
-</script>

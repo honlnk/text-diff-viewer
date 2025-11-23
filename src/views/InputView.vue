@@ -1,3 +1,110 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
+import type { UploadFile } from 'element-plus'
+import type { FileData } from '@/types/diff'
+import { useDiffStore } from '@/stores/diff'
+
+const router = useRouter()
+const diffStore = useDiffStore()
+
+// 数据状态
+const data1 = ref<FileData>({ content: '', type: 'text' })
+const data2 = ref<FileData>({ content: '', type: 'text' })
+const isComparing = ref(false)
+const errorMessage = ref('')
+
+// 是否可以对比
+const canCompare = computed(() => {
+  return data1.value.content.trim() && data2.value.content.trim()
+})
+
+// 切换输入类型
+const switchInputType = (dataNum: 1 | 2, type: 'file' | 'text') => {
+  if (dataNum === 1) {
+    data1.value = { content: '', type }
+  } else {
+    data2.value = { content: '', type }
+  }
+}
+
+// 处理文件变化
+const handleFileChange = (file: UploadFile, dataNum: 1 | 2) => {
+  const validExtensions = ['.txt', '.md', '.csv']
+
+  // 检查文件类型
+  const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase()
+  if (!validExtensions.includes(fileExtension)) {
+    ElMessage.error('仅支持 .txt、.md、.csv 格式的文件')
+    return
+  }
+
+  // 检查文件大小和原始文件是否存在
+  if (!file.raw || !file.size || file.size > 10 * 1024 * 1024) {
+    ElMessage.error(file.size && file.size > 10 * 1024 * 1024 ? '文件大小不能超过 10MB' : '文件无效，请重新选择文件')
+    return
+  }
+
+  // 读取文件内容
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const content = e.target?.result as string
+    if (dataNum === 1) {
+      data1.value = {
+        name: file.name,
+        content,
+        type: 'file',
+        size: file.size
+      }
+    } else {
+      data2.value = {
+        name: file.name,
+        content,
+        type: 'file',
+        size: file.size
+      }
+    }
+  }
+  reader.onerror = () => {
+    ElMessage.error('文件读取失败，请重新选择文件')
+  }
+  reader.readAsText(file.raw)
+}
+
+// 处理对比
+const handleCompare = async () => {
+  if (!canCompare.value) {
+    ElMessage.warning('请提供两个对比数据')
+    return
+  }
+
+  // 检查内容是否相同
+  if (data1.value.content === data2.value.content) {
+    ElMessage.info('两个文件内容完全相同，无需对比')
+    return
+  }
+
+  try {
+    isComparing.value = true
+    errorMessage.value = ''
+
+    // 使用Pinia store存储数据
+    diffStore.setData(data1.value, data2.value)
+
+    // 跳转到结果页面
+    await router.push('/result')
+
+  } catch (error) {
+    console.error('对比过程出错:', error)
+    errorMessage.value = '对比过程出错，请稍后重试'
+  } finally {
+    isComparing.value = false
+  }
+}
+</script>
+
 <template>
   <div class="space-y-6">
     <div class="text-center">
@@ -157,110 +264,3 @@
     />
   </div>
 </template>
-
-<script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
-import type { UploadFile } from 'element-plus'
-import type { FileData } from '@/types/diff'
-import { useDiffStore } from '@/stores/diff'
-
-const router = useRouter()
-const diffStore = useDiffStore()
-
-// 数据状态
-const data1 = ref<FileData>({ content: '', type: 'text' })
-const data2 = ref<FileData>({ content: '', type: 'text' })
-const isComparing = ref(false)
-const errorMessage = ref('')
-
-// 是否可以对比
-const canCompare = computed(() => {
-  return data1.value.content.trim() && data2.value.content.trim()
-})
-
-// 切换输入类型
-const switchInputType = (dataNum: 1 | 2, type: 'file' | 'text') => {
-  if (dataNum === 1) {
-    data1.value = { content: '', type }
-  } else {
-    data2.value = { content: '', type }
-  }
-}
-
-// 处理文件变化
-const handleFileChange = (file: UploadFile, dataNum: 1 | 2) => {
-  const validExtensions = ['.txt', '.md', '.csv']
-
-  // 检查文件类型
-  const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase()
-  if (!validExtensions.includes(fileExtension)) {
-    ElMessage.error('仅支持 .txt、.md、.csv 格式的文件')
-    return
-  }
-
-  // 检查文件大小和原始文件是否存在
-  if (!file.raw || !file.size || file.size > 10 * 1024 * 1024) {
-    ElMessage.error(file.size && file.size > 10 * 1024 * 1024 ? '文件大小不能超过 10MB' : '文件无效，请重新选择文件')
-    return
-  }
-
-  // 读取文件内容
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const content = e.target?.result as string
-    if (dataNum === 1) {
-      data1.value = {
-        name: file.name,
-        content,
-        type: 'file',
-        size: file.size
-      }
-    } else {
-      data2.value = {
-        name: file.name,
-        content,
-        type: 'file',
-        size: file.size
-      }
-    }
-  }
-  reader.onerror = () => {
-    ElMessage.error('文件读取失败，请重新选择文件')
-  }
-  reader.readAsText(file.raw)
-}
-
-// 处理对比
-const handleCompare = async () => {
-  if (!canCompare.value) {
-    ElMessage.warning('请提供两个对比数据')
-    return
-  }
-
-  // 检查内容是否相同
-  if (data1.value.content === data2.value.content) {
-    ElMessage.info('两个文件内容完全相同，无需对比')
-    return
-  }
-
-  try {
-    isComparing.value = true
-    errorMessage.value = ''
-
-    // 使用Pinia store存储数据
-    diffStore.setData(data1.value, data2.value)
-
-    // 跳转到结果页面
-    await router.push('/result')
-
-  } catch (error) {
-    console.error('对比过程出错:', error)
-    errorMessage.value = '对比过程出错，请稍后重试'
-  } finally {
-    isComparing.value = false
-  }
-}
-</script>
