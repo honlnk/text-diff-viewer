@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import logoImage from '@/assets/images/logo.png'
 
 // GitHub 仓库地址
 const GITHUB_REPO_URL = 'https://github.com/honlnk/text-diff-viewer'
@@ -15,9 +16,16 @@ const openGitHubRepo = () => {
     <header class="bg-white shadow-sm border-b">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-16">
-          <h1 class="text-xl font-semibold text-gray-900">
-            文本差异对比工具
-          </h1>
+          <div class="flex items-center space-x-3">
+            <img
+              :src="logoImage"
+              alt="Text Diff Viewer Logo"
+              class="h-8 w-auto"
+            />
+            <h1 class="text-xl font-semibold text-gray-900">
+              文本差异对比工具
+            </h1>
+          </div>
 
           <!-- GitHub 按钮 -->
           <el-button
