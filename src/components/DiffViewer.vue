@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { DiffResult, DiffRecord } from '@/types/diff'
+import type { DiffResult } from '@/types/diff'
 import { calculateDiffStats } from '@/utils/diffAlgorithm'
 
 interface Props {
@@ -13,9 +13,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 // 响应式数据
-const displayMode = ref<'inline' | 'unified'>('inline')
 const showWhitespace = ref(false)
-const showLineNumbers = ref(true)
 
 // 计算属性
 const stats = computed(() => calculateDiffStats(props.diffResult))
@@ -27,19 +25,11 @@ const sortedDiffs = computed(() => {
 const originalCharCount = computed(() => props.diffResult.text1.length)
 const modifiedCharCount = computed(() => props.diffResult.text2.length)
 
-// 文本分段处理
-const originalSegments = computed(() => {
-  return processTextWithDiffs(props.diffResult.text1, props.diffResult.diffs, 'original')
+// 统一文本分段处理
+const unifiedSegments = computed(() => {
+  return createUnifiedSegments(props.diffResult)
 })
 
-const modifiedSegments = computed(() => {
-  return processTextWithDiffs(props.diffResult.text2, props.diffResult.diffs, 'modified')
-})
-
-// 统一视图行处理
-const unifiedLines = computed(() => {
-  return createUnifiedView(props.diffResult.text1, props.diffResult.text2, props.diffResult.diffs)
-})
 
 // 方法
 function getSegmentClass(type: string) {
@@ -55,16 +45,6 @@ function getSegmentClass(type: string) {
   }
 }
 
-function getLineClass(type: string) {
-  switch (type) {
-    case 'deleted':
-      return 'bg-red-50'
-    case 'added':
-      return 'bg-green-50'
-    default:
-      return ''
-  }
-}
 
 function displayWhitespace(text: string) {
   return text
@@ -86,56 +66,62 @@ function getDiffTypeLabel(type: string) {
   }
 }
 
+
 /**
- * 处理文本并标记差异
+ * 创建统一差异片段
+ * 简化版本，基于排序后的差异记录处理
  */
-function processTextWithDiffs(
-  text: string,
-  diffs: DiffRecord[],
-  mode: 'original' | 'modified'
+function createUnifiedSegments(
+  diffResult: DiffResult
 ): Array<{ content: string; type: string }> {
   const segments: Array<{ content: string; type: string }> = []
-  let currentIndex = 0
+  const { text1, diffs } = diffResult
 
-  // 按位置排序的差异记录
+  // 如果没有差异，直接返回原文本
+  if (diffs.length === 0) {
+    return [{ content: text1, type: 'normal' }]
+  }
+
+  // 按位置排序差异记录
   const sortedDiffs = [...diffs].sort((a, b) => a.position - b.position)
+  let currentIndex = 0
 
   for (const diff of sortedDiffs) {
     // 添加差异前的正常文本
     if (diff.position > currentIndex) {
-      const normalText = text.slice(currentIndex, diff.position)
+      const normalText = text1.slice(currentIndex, diff.position)
       if (normalText) {
         segments.push({ content: normalText, type: 'normal' })
       }
     }
 
-    // 根据模式处理差异
-    if (mode === 'original' && diff.type === 'delete') {
+    // 处理差异
+    if (diff.type === 'delete') {
       segments.push({ content: diff.content, type: 'deleted' })
-    } else if (mode === 'modified' && diff.type === 'add') {
+      currentIndex = diff.position + diff.content.length
+    } else if (diff.type === 'add') {
       segments.push({ content: diff.content, type: 'added' })
+      // 新增不改变位置索引，保持在当前位置
     } else if (diff.type === 'modify') {
-      if (mode === 'original') {
-        segments.push({
-          content: diff.originalContent || '',
-          type: 'modified'
-        })
-      } else {
-        segments.push({
-          content: diff.content,
-          type: 'modified'
-        })
+      // 对于修改操作，可以选择两种处理方式：
+      // 方式1：显示为单个修改项（蓝色背景）
+      // 方式2：分解为删除+新增（当前使用的方式）
+      // 这里使用方式2，但保留了modify类型的样式支持
+      if (diff.originalContent) {
+        segments.push({ content: diff.originalContent, type: 'deleted' })
+        currentIndex = diff.position + diff.originalContent.length
       }
-    }
+      segments.push({ content: diff.content, type: 'added' })
 
-    currentIndex = diff.position + (mode === 'original' ?
-      (diff.type === 'delete' ? diff.content.length : 0) :
-      (diff.type === 'add' ? diff.content.length : 0))
+      // 将来如果要使用方式1（单个修改项），可以改为：
+      // segments.push({ content: diff.content, type: 'modified' })
+      // currentIndex = diff.position + (diff.originalContent?.length || 0)
+    }
   }
 
   // 添加剩余的正常文本
-  if (currentIndex < text.length) {
-    const remainingText = text.slice(currentIndex)
+  if (currentIndex < text1.length) {
+    const remainingText = text1.slice(currentIndex)
     if (remainingText) {
       segments.push({ content: remainingText, type: 'normal' })
     }
@@ -144,80 +130,19 @@ function processTextWithDiffs(
   return segments
 }
 
-/**
- * 创建统一视图
- */
-function createUnifiedView(
-  text1: string,
-  text2: string,
-  diffs: DiffRecord[]
-): Array<{
-  type: string
-  originalLine?: number
-  modifiedLine?: number
-  segments: Array<{ content: string; type: string }>
-}> {
-  // 这是一个简化实现，实际需要更复杂的逻辑
-  const lines = []
-
-  // 按换行符分割文本
-  const text1Lines = text1.split('\n')
-  const text2Lines = text2.split('\n')
-
-  // 简单的行级对比
-  const maxLines = Math.max(text1Lines.length, text2Lines.length)
-  for (let i = 0; i < maxLines; i++) {
-    const line1 = text1Lines[i] || ''
-    const line2 = text2Lines[i] || ''
-
-    if (line1 === line2) {
-      lines.push({
-        type: 'normal',
-        originalLine: i,
-        modifiedLine: i,
-        segments: [{ content: line1, type: 'normal' }]
-      })
-    } else {
-      // 有差异的行
-      if (line1) {
-        lines.push({
-          type: 'deleted',
-          originalLine: i,
-          segments: [{ content: line1, type: 'deleted' }]
-        })
-      }
-      if (line2) {
-        lines.push({
-          type: 'added',
-          modifiedLine: i,
-          segments: [{ content: line2, type: 'added' }]
-        })
-      }
-    }
-  }
-
-  return lines
-}
 </script>
 
 <template>
   <div class="diff-viewer">
-    <!-- 差异显示模式切换 -->
+    <!-- 显示选项 -->
     <div class="mb-4 flex items-center justify-between">
-      <div class="flex items-center space-x-2">
-        <span class="text-sm text-gray-600">显示模式:</span>
-        <el-radio-group v-model="displayMode" size="small">
-          <el-radio-button label="inline">并排对比</el-radio-button>
-          <el-radio-button label="unified">统一视图</el-radio-button>
-        </el-radio-group>
+      <div class="text-sm text-gray-600">
+        差异对比视图
       </div>
 
       <div class="flex items-center space-x-2">
         <el-checkbox v-model="showWhitespace" size="small">
           显示空白字符
-        </el-checkbox>
-        <el-checkbox v-model="showLineNumbers" size="small">
-          显示行号
         </el-checkbox>
       </div>
     </div>
@@ -245,84 +170,22 @@ function createUnifiedView(
       </div>
     </div>
 
-    <!-- 并排对比模式 -->
-    <div v-if="displayMode === 'inline'" class="inline-diff">
-      <div class="grid grid-cols-2 gap-4">
-        <!-- 原文本 -->
-        <div class="original-text border rounded-lg overflow-hidden">
-          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
-            原文本 ({{ originalCharCount }} 字符)
-          </div>
-          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto">
-            <div
-              v-for="(segment, index) in originalSegments"
-              :key="index"
-              :class="getSegmentClass(segment.type)"
-              class="inline"
-            >
-              <span v-if="showWhitespace" class="whitespace-debug">
-                {{ displayWhitespace(segment.content) }}
-              </span>
-              <span v-else>{{ segment.content }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 修改后文本 -->
-        <div class="modified-text border rounded-lg overflow-hidden">
-          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
-            修改后文本 ({{ modifiedCharCount }} 字符)
-          </div>
-          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto">
-            <div
-              v-for="(segment, index) in modifiedSegments"
-              :key="index"
-              :class="getSegmentClass(segment.type)"
-              class="inline"
-            >
-              <span v-if="showWhitespace" class="whitespace-debug">
-                {{ displayWhitespace(segment.content) }}
-              </span>
-              <span v-else>{{ segment.content }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 统一视图模式 -->
-    <div v-else class="unified-diff border rounded-lg overflow-hidden">
+    <!-- 统一差异视图 -->
+    <div class="unified-diff border rounded-lg overflow-hidden">
       <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
-        统一差异视图
+        文档差异对比 (原文本 {{ originalCharCount }} 字符 → 修改后 {{ modifiedCharCount }} 字符)
       </div>
-      <div class="max-h-96 overflow-y-auto">
-        <div
-          v-for="(line, index) in unifiedLines"
+      <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap">
+        <span
+          v-for="(segment, index) in unifiedSegments"
           :key="index"
-          class="flex border-b border-gray-100"
-          :class="getLineClass(line.type)"
+          :class="getSegmentClass(segment.type)"
         >
-          <!-- 行号 -->
-          <div v-if="showLineNumbers" class="line-numbers flex-none px-3 py-2 text-xs text-gray-500 border-r">
-            <span class="block w-12 text-right">{{ line.originalLine !== undefined ? line.originalLine + 1 : '' }}</span>
-            <span class="block w-12 text-right">{{ line.modifiedLine !== undefined ? line.modifiedLine + 1 : '' }}</span>
-          </div>
-
-          <!-- 内容 -->
-          <div class="flex-1 px-4 py-2 font-mono text-sm">
-            <span
-              v-for="(segment, segIndex) in line.segments"
-              :key="segIndex"
-              :class="getSegmentClass(segment.type)"
-              class="inline"
-            >
-              <span v-if="showWhitespace" class="whitespace-debug">
-                {{ displayWhitespace(segment.content) }}
-              </span>
-              <span v-else>{{ segment.content }}</span>
-            </span>
-          </div>
-        </div>
+          <span v-if="showWhitespace" class="whitespace-debug">
+            {{ displayWhitespace(segment.content) }}
+          </span>
+          <span v-else>{{ segment.content }}</span>
+        </span>
       </div>
     </div>
 

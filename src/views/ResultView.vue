@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import type { FileData, DiffResult, DiffStats } from '@/types/diff'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Download, Loading } from '@element-plus/icons-vue'
 import DiffViewer from '@/components/DiffViewer.vue'
-import type { FileData, DiffResult, DiffStats } from '@/types/diff'
 import { calculateDiff as calculateTextDiff, calculateDiffStats } from '@/utils/diffAlgorithm'
 import { validateTextContent } from '@/utils/textProcessor'
 import { useDiffStore } from '@/stores/diff'
