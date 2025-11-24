@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 // 响应式数据
 const showWhitespace = ref(false)
+const viewMode = ref<'diff' | 'original'>('diff') // 'diff': 差异视图, 'original': 原始对比视图
 
 // 计算属性
 const stats = computed(() => calculateDiffStats(props.diffResult))
@@ -136,8 +137,12 @@ function createUnifiedSegments(
   <div class="diff-viewer">
     <!-- 显示选项 -->
     <div class="mb-4 flex items-center justify-between">
-      <div class="text-sm text-gray-600">
-        差异对比视图
+      <div class="flex items-center space-x-2">
+        <span class="text-sm text-gray-600">显示模式:</span>
+        <el-radio-group v-model="viewMode" size="small">
+          <el-radio-button label="diff">差异视图</el-radio-button>
+          <el-radio-button label="original">原始对比</el-radio-button>
+        </el-radio-group>
       </div>
 
       <div class="flex items-center space-x-2">
@@ -170,8 +175,8 @@ function createUnifiedSegments(
       </div>
     </div>
 
-    <!-- 统一差异视图 -->
-    <div class="unified-diff border rounded-lg overflow-hidden">
+    <!-- 差异视图 -->
+    <div v-if="viewMode === 'diff'" class="unified-diff border rounded-lg overflow-hidden">
       <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
         文档差异对比 (原文本 {{ originalCharCount }} 字符 → 修改后 {{ modifiedCharCount }} 字符)
       </div>
@@ -186,6 +191,37 @@ function createUnifiedSegments(
           </span>
           <span v-else>{{ segment.content }}</span>
         </span>
+      </div>
+    </div>
+
+    <!-- 原始文本对比视图 -->
+    <div v-else class="original-comparison">
+      <div class="grid grid-cols-2 gap-4">
+        <!-- 原文本 -->
+        <div class="border rounded-lg overflow-hidden">
+          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
+            原文本 ({{ originalCharCount }} 字符)
+          </div>
+          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap">
+            <span v-if="showWhitespace">
+              {{ displayWhitespace(diffResult.text1) }}
+            </span>
+            <span v-else>{{ diffResult.text1 }}</span>
+          </div>
+        </div>
+
+        <!-- 修改后文本 -->
+        <div class="border rounded-lg overflow-hidden">
+          <div class="bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 border-b">
+            修改后文本 ({{ modifiedCharCount }} 字符)
+          </div>
+          <div class="p-4 font-mono text-sm leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap">
+            <span v-if="showWhitespace">
+              {{ displayWhitespace(diffResult.text2) }}
+            </span>
+            <span v-else>{{ diffResult.text2 }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
