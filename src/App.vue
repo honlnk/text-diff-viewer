@@ -1,3 +1,7 @@
+<script setup lang="ts">
+import { RouterView } from 'vue-router'
+</script>
+
 <template>
   <div id="app" class="min-h-screen bg-gray-50">
     <header class="bg-white shadow-sm border-b">
@@ -15,10 +19,6 @@
     </main>
   </div>
 </template>
-
-<script setup lang="ts">
-import { RouterView } from 'vue-router'
-</script>
 
 <style scoped>
 #app {
