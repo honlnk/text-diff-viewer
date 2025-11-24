@@ -7,6 +7,7 @@ import { ArrowLeft, Download, Loading } from '@element-plus/icons-vue'
 import DiffViewer from '@/components/DiffViewer.vue'
 import { calculateDiff as calculateTextDiff, calculateDiffStats } from '@/utils/diffAlgorithm'
 import { validateTextContent } from '@/utils/textProcessor'
+import { downloadHTMLFile, generateFilename } from '@/utils/htmlExporter'
 import { useDiffStore } from '@/stores/diff'
 
 const router = useRouter()
@@ -14,6 +15,7 @@ const diffStore = useDiffStore()
 
 // 状态
 const loading = ref(false)
+const exporting = ref(false)
 const error = ref('')
 const data1 = ref<FileData>()
 const data2 = ref<FileData>()
@@ -39,8 +41,40 @@ const goBack = () => {
 }
 
 // 导出HTML
-const exportHTML = () => {
-  ElMessage.info('HTML导出功能将在下一阶段实现')
+const exportHTML = async () => {
+  if (!data1.value?.content || !data2.value?.content || !diffResult.value || !diffStats.value) {
+    ElMessage.error('缺少必要的导出数据')
+    return
+  }
+
+  exporting.value = true
+
+  try {
+    // 生成标准文件名
+    const filename = generateFilename(data1.value, data2.value)
+
+    // 导出HTML文件
+    await downloadHTMLFile(
+      data1.value,
+      data2.value,
+      diffResult.value,
+      diffStats.value,
+      {
+        includeMetadata: true,
+        includeTimestamp: true,
+        includeStats: true
+      },
+      filename
+    )
+
+    ElMessage.success('HTML导出成功！')
+
+  } catch (error) {
+    console.error('HTML导出失败:', error)
+    ElMessage.error(`HTML导出失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    exporting.value = false
+  }
 }
 
 // 计算差异（使用真实的diff算法）
@@ -130,11 +164,11 @@ onMounted(() => {
       </el-button>
 
       <div class="flex space-x-3">
-        <el-button type="success" @click="exportHTML">
+        <el-button type="success" @click="exportHTML" :loading="exporting">
           <el-icon class="mr-2">
             <Download />
           </el-icon>
-          导出HTML
+          {{ exporting ? '导出中...' : '导出HTML' }}
         </el-button>
       </div>
     </div>
