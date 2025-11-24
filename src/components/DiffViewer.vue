@@ -36,11 +36,11 @@ const unifiedSegments = computed(() => {
 function getSegmentClass(type: string) {
   switch (type) {
     case 'deleted':
-      return 'bg-red-100 text-red-900 line-through'
+      return 'bg-red-100 text-red-900 line-through px-1 rounded'
     case 'added':
-      return 'bg-green-100 text-green-900'
+      return 'bg-green-100 text-green-900 px-1 rounded'
     case 'modified':
-      return 'bg-blue-100 text-blue-900'
+      return 'bg-blue-100 text-blue-900 px-1 rounded'
     default:
       return ''
   }
@@ -74,8 +74,14 @@ function getDiffTypeLabel(type: string) {
  */
 function createUnifiedSegments(
   diffResult: DiffResult
-): Array<{ content: string; type: string }> {
-  const segments: Array<{ content: string; type: string }> = []
+): Array<{
+  content: string | { oldContent: string; newContent: string };
+  type: string
+}> {
+  const segments: Array<{
+  content: string | { oldContent: string; newContent: string };
+  type: string
+}> = []
   const { text1, diffs } = diffResult
 
   // 如果没有差异，直接返回原文本
@@ -104,19 +110,16 @@ function createUnifiedSegments(
       segments.push({ content: diff.content, type: 'added' })
       // 新增不改变位置索引，保持在当前位置
     } else if (diff.type === 'modify') {
-      // 对于修改操作，可以选择两种处理方式：
-      // 方式1：显示为单个修改项（蓝色背景）
-      // 方式2：分解为删除+新增（当前使用的方式）
-      // 这里使用方式2，但保留了modify类型的样式支持
-      if (diff.originalContent) {
-        segments.push({ content: diff.originalContent, type: 'deleted' })
-        currentIndex = diff.position + diff.originalContent.length
+      // 将修改操作显示为蓝色背景区域，包含原内容（删除线）和新内容
+      const modifySegment = {
+        content: {
+          oldContent: diff.originalContent || '',
+          newContent: diff.content
+        },
+        type: 'modified'
       }
-      segments.push({ content: diff.content, type: 'added' })
-
-      // 将来如果要使用方式1（单个修改项），可以改为：
-      // segments.push({ content: diff.content, type: 'modified' })
-      // currentIndex = diff.position + (diff.originalContent?.length || 0)
+      segments.push(modifySegment)
+      currentIndex = diff.position + (diff.originalContent?.length || 0)
     }
   }
 
@@ -186,10 +189,18 @@ function createUnifiedSegments(
           :key="index"
           :class="getSegmentClass(segment.type)"
         >
-          <span v-if="showWhitespace" class="whitespace-debug">
-            {{ displayWhitespace(segment.content) }}
-          </span>
-          <span v-else>{{ segment.content }}</span>
+          <template v-if="segment.type === 'modified' && typeof segment.content === 'object'">
+            <!-- 修改操作：显示原内容(删除线) + 新内容 -->
+            <span class="line-through text-red-700">{{ segment.content.oldContent }}</span>
+            <span class="text-green-700">{{ segment.content.newContent }}</span>
+          </template>
+          <template v-else>
+            <!-- 其他操作：正常显示 -->
+            <span v-if="showWhitespace" class="whitespace-debug">
+              {{ displayWhitespace(segment.content as string) }}
+            </span>
+            <span v-else>{{ segment.content }}</span>
+          </template>
         </span>
       </div>
     </div>
@@ -243,7 +254,14 @@ function createUnifiedSegments(
                   新增: {{ JSON.stringify(diff.content) }}
                 </div>
                 <div v-else-if="diff.type === 'modify'" class="text-blue-600">
-                  修改: {{ JSON.stringify(diff.originalContent) }} → {{ JSON.stringify(diff.content) }}
+                  <div class="mb-1">
+                    <span class="font-medium">原内容:</span>
+                    <span class="line-through bg-red-50 px-1 rounded">{{ diff.originalContent }}</span>
+                  </div>
+                  <div>
+                    <span class="font-medium">新内容:</span>
+                    <span class="bg-green-50 px-1 rounded">{{ diff.content }}</span>
+                  </div>
                 </div>
               </div>
             </div>

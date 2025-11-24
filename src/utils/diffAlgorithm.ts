@@ -1,11 +1,15 @@
 /**
  * 差异算法集成模块
- * 基于diff-match-patch库实现字符级差异检测
+ * 基于Levenshtein算法实现字符级差异检测
  */
 
-import { DIFF_DELETE, DIFF_INSERT, DIFF_EQUAL } from 'diff-match-patch'
-import type { DiffResult, DiffRecord, DiffStats } from '@/types/diff'
+import type { DiffResult, DiffStats } from '@/types/diff'
 import { preprocessText, splitIntoChars } from './textProcessor'
+import {
+  calculateLevenshtein,
+  convertOperationsToDiffRecords,
+  type LevenshteinOptions
+} from './levenshtein'
 
 /**
  * 差异算法配置选项
@@ -59,27 +63,19 @@ export async function calculateDiff(
   const chars2 = splitFunc(compareText2)
 
   try {
-    // 导入diff-match-patch库（动态导入以优化打包）
-    const { default: DiffMatchPatch } = await import('diff-match-patch')
-    const dmp = new DiffMatchPatch()
+    // 使用Levenshtein算法计算差异
+    const levenshteinOptions: LevenshteinOptions = {
+      timeout: finalOptions.timeout
+    }
 
-    // 设置超时
-    dmp.Diff_Timeout = finalOptions.timeout / 1000
-
-    // 计算差异
-    const diffs = dmp.diff_main(
-      chars1.join(''),
-      chars2.join('')
+    const { editDistance, operations } = calculateLevenshtein(
+      chars1,
+      chars2,
+      levenshteinOptions
     )
 
-    // 清理差异结果（合并连续的小差异）
-    dmp.diff_cleanupSemantic(diffs)
-
-    // 转换为我们的格式
-    const diffRecords = convertDiffsToRecords(diffs)
-
-    // 计算编辑距离
-    const editDistance = calculateEditDistance(diffs)
+    // 将操作序列转换为DiffRecord格式
+    const diffRecords = convertOperationsToDiffRecords(operations, chars1, chars2)
 
     // 计算相似度
     const similarity = calculateSimilarity(processedText1, processedText2, editDistance)
@@ -114,56 +110,6 @@ function getSplitFunction(precision: DiffOptions['precision']): (text: string) =
 }
 
 /**
- * 将diff-match-patch的差异结果转换为我们的DiffRecord格式
- */
-function convertDiffsToRecords(
-  diffs: [number, string][]
-): DiffRecord[] {
-  const records: DiffRecord[] = []
-  let position1 = 0
-  let position2 = 0
-
-  for (const [operation, text] of diffs) {
-    if (operation === DIFF_EQUAL) {
-      // 相等的内容，跳过
-      position1 += text.length
-      position2 += text.length
-    } else if (operation === DIFF_DELETE) {
-      // 删除内容
-      records.push({
-        position: position1,
-        type: 'delete',
-        content: text
-      })
-      position1 += text.length
-    } else if (operation === DIFF_INSERT) {
-      // 新增内容
-      records.push({
-        position: position1, // 使用position1作为基准位置
-        type: 'add',
-        content: text
-      })
-      position2 += text.length
-    }
-  }
-
-  return records
-}
-
-/**
- * 计算编辑距离
- */
-function calculateEditDistance(diffs: [number, string][]): number {
-  let distance = 0
-  for (const [operation, text] of diffs) {
-    if (operation !== DIFF_EQUAL) {
-      distance += text.length
-    }
-  }
-  return distance
-}
-
-/**
  * 计算文本相似度百分比
  */
 function calculateSimilarity(text1: string, text2: string, editDistance: number): number {
@@ -187,12 +133,17 @@ export function calculateDiffStats(diffResult: DiffResult): DiffStats {
   let deletions = 0
   let modifications = 0
 
-  // 简单统计：直接计算新增和删除的数量
   for (const diff of diffs) {
-    if (diff.type === 'add') {
-      additions++
-    } else if (diff.type === 'delete') {
-      deletions++
+    switch (diff.type) {
+      case 'add':
+        additions++
+        break
+      case 'delete':
+        deletions++
+        break
+      case 'modify':
+        modifications++
+        break
     }
   }
 
