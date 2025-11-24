@@ -114,7 +114,7 @@ export function calculateLevenshtein(
     else if (j > 0 && dp[i][j] === dp[i][j - 1] + 1) {
       operations.push({
         type: 'insert',
-        position: i,
+        position: i,  // 插入位置应该是当前的i值（在text1中的位置）
         newChar: str2[j - 1]
       })
       j -= 1
@@ -124,10 +124,82 @@ export function calculateLevenshtein(
   // 反转操作序列，使其按从前往后的顺序
   operations.reverse()
 
+  // 优化操作序列：合并连续的插入操作
+  const optimizedOperations = optimizeOperations(operations)
+
+  
   return {
     editDistance: dp[m][n],
-    operations
+    operations: optimizedOperations
   }
+}
+
+/**
+ * 优化操作序列：合并连续的插入操作，解决add和modify在同位置的冲突
+ */
+function optimizeOperations(operations: LevenshteinOperation[]): LevenshteinOperation[] {
+  if (operations.length === 0) {
+    return operations
+  }
+
+  const optimized: LevenshteinOperation[] = []
+
+  for (let i = 0; i < operations.length; i++) {
+    const current = operations[i]
+
+    // 如果是插入操作，检查是否可以与后面的插入操作合并
+    if (current.type === 'insert') {
+      let mergedContent = current.newChar || ''
+      let nextIndex = i + 1
+
+      // 首先合并所有连续的插入操作（相同位置）
+      while (nextIndex < operations.length &&
+             operations[nextIndex].type === 'insert' &&
+             operations[nextIndex].position === current.position) {
+        mergedContent += operations[nextIndex].newChar || ''
+        nextIndex++
+      }
+
+      // 检查下一个是否是相同位置的修改操作，如果有则合并
+      if (nextIndex < operations.length &&
+          operations[nextIndex].type === 'replace' &&
+          operations[nextIndex].position === current.position) {
+        // 将插入和修改合并为一个插入操作
+        const replaceOp = operations[nextIndex]
+        mergedContent += replaceOp.newChar || ''
+
+        optimized.push({
+          type: 'insert',
+          position: current.position,
+          newChar: mergedContent
+        })
+
+        i = nextIndex  // 跳过已合并的replace操作
+      } else {
+        // 添加合并后的插入操作
+        optimized.push({
+          type: 'insert',
+          position: current.position,
+          newChar: mergedContent
+        })
+      }
+
+      // 跳过已合并的操作
+      i = nextIndex - 1
+    } else {
+      // 对于非插入操作，检查是否前面有相同位置的插入操作已被处理
+      const hasPrecedingInsert = optimized.length > 0 &&
+                                 optimized[optimized.length - 1].type === 'insert' &&
+                                 optimized[optimized.length - 1].position === current.position
+
+      if (!hasPrecedingInsert) {
+        // 只有在没有前面插入操作的情况下才添加当前操作
+        optimized.push(current)
+      }
+    }
+  }
+
+  return optimized
 }
 
 /**

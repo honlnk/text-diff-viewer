@@ -70,7 +70,7 @@ function getDiffTypeLabel(type: string) {
 
 /**
  * 创建统一差异片段
- * 简化版本，基于排序后的差异记录处理
+ * 正确处理字符级差异的位置映射和累积效果
  */
 function createUnifiedSegments(
   diffResult: DiffResult
@@ -91,26 +91,36 @@ function createUnifiedSegments(
 
   // 按位置排序差异记录
   const sortedDiffs = [...diffs].sort((a, b) => a.position - b.position)
-  let currentIndex = 0
+
+  let text1Index = 0  // 在text1中的当前位置
+  let text2Index = 0  // 在text2中的当前位置
 
   for (const diff of sortedDiffs) {
     // 添加差异前的正常文本
-    if (diff.position > currentIndex) {
-      const normalText = text1.slice(currentIndex, diff.position)
+    if (diff.position > text1Index) {
+      const normalText = text1.slice(text1Index, diff.position)
       if (normalText) {
         segments.push({ content: normalText, type: 'normal' })
+        // 同步text2Index，假设text2中相同位置也是相同的文本
+        text2Index += normalText.length
       }
     }
 
     // 处理差异
     if (diff.type === 'delete') {
+      // 删除操作：在text1中存在，text2中不存在
       segments.push({ content: diff.content, type: 'deleted' })
-      currentIndex = diff.position + diff.content.length
+      text1Index = diff.position + diff.content.length
+      // text2Index不变，因为删除的字符在text2中不存在
+
     } else if (diff.type === 'add') {
+      // 新增操作：在text2中存在，text1中不存在
       segments.push({ content: diff.content, type: 'added' })
-      // 新增不改变位置索引，保持在当前位置
+      // text1Index不变，因为新增的字符在text1中不存在
+      text2Index += diff.content.length
+
     } else if (diff.type === 'modify') {
-      // 将修改操作显示为蓝色背景区域，包含原内容（删除线）和新内容
+      // 修改操作：text1中的字符被替换为text2中的字符
       const modifySegment = {
         content: {
           oldContent: diff.originalContent || '',
@@ -119,13 +129,14 @@ function createUnifiedSegments(
         type: 'modified'
       }
       segments.push(modifySegment)
-      currentIndex = diff.position + (diff.originalContent?.length || 0)
+      text1Index = diff.position + (diff.originalContent?.length || 0)
+      text2Index += diff.content.length
     }
   }
 
   // 添加剩余的正常文本
-  if (currentIndex < text1.length) {
-    const remainingText = text1.slice(currentIndex)
+  if (text1Index < text1.length) {
+    const remainingText = text1.slice(text1Index)
     if (remainingText) {
       segments.push({ content: remainingText, type: 'normal' })
     }
