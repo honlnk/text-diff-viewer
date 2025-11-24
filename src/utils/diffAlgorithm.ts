@@ -187,43 +187,12 @@ export function calculateDiffStats(diffResult: DiffResult): DiffStats {
   let deletions = 0
   let modifications = 0
 
-  // 分析差异记录以确定修改数量
-  const sortedDiffs = [...diffs].sort((a, b) => a.position - b.position)
-  const processedIndices = new Set<number>()
-
-  for (let i = 0; i < sortedDiffs.length; i++) {
-    // 跳过已处理的记录
-    if (processedIndices.has(i)) {
-      continue
-    }
-
-    const diff = sortedDiffs[i]
-
+  // 简单统计：直接计算新增和删除的数量
+  for (const diff of diffs) {
     if (diff.type === 'add') {
-      // 查找相邻的删除操作，可能组成修改操作
-      let adjacentDeleteIndex = -1
-      for (let j = 0; j < sortedDiffs.length; j++) {
-        if (i !== j && !processedIndices.has(j) && sortedDiffs[j].type === 'delete') {
-          if (Math.abs(sortedDiffs[j].position - diff.position) <= 5) {
-            adjacentDeleteIndex = j
-            break
-          }
-        }
-      }
-
-      if (adjacentDeleteIndex !== -1) {
-        // 找到相邻的删除操作，计为修改
-        modifications++
-        processedIndices.add(i) // 标记当前add记录为已处理
-        processedIndices.add(adjacentDeleteIndex) // 标记对应的delete记录为已处理
-      } else {
-        // 没有找到相邻的删除操作，计为新增
-        additions++
-      }
+      additions++
     } else if (diff.type === 'delete') {
-      // 删除操作（如果没有被上面的add操作配对）
       deletions++
-      processedIndices.add(i)
     }
   }
 
