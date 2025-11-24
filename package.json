@@ -7,11 +7,13 @@
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
-    "diff-match-patch": "^1.0.5",
     "element-plus": "^2.4.4",
     "pinia": "^2.1.7",
     "vue": "^3.4.0",
@@ -19,20 +21,22 @@
   },
   "devDependencies": {
     "@tsconfig/node20": "^20.1.8",
-    "@types/diff-match-patch": "^1.0.1",
     "@types/node": "^20.10.0",
     "@vitejs/plugin-vue": "^5.0.0",
+    "@vitest/ui": "^4.0.13",
     "@vue/eslint-config-prettier": "^8.0.0",
     "@vue/eslint-config-typescript": "^12.0.0",
     "@vue/tsconfig": "^0.5.0",
     "eslint": "^8.55.0",
     "eslint-plugin-vue": "^9.19.0",
+    "jsdom": "^27.2.0",
     "prettier": "^3.1.1",
     "typescript": "^5.3.0",
     "unocss": "^0.58.0",
     "unplugin-auto-import": "^0.17.2",
     "unplugin-vue-components": "^0.26.0",
     "vite": "^5.0.0",
+    "vitest": "^4.0.13",
     "vue-tsc": "^2.2.12"
   }
 }

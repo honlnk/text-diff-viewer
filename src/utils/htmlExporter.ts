@@ -9,6 +9,8 @@ import type { DiffResult, FileData, DiffStats, ExportOptions } from '@/types/dif
  * - 元数据信息记录（时间、文件名、统计）
  * - 标准化HTML5文档结构
  * - 跨浏览器兼容性
+ * - 基于Levenshtein算法的精确差异检测
+ * - 与页面显示完全一致的导出效果
  */
 
 /**
@@ -115,9 +117,9 @@ const HTML_STYLES = `
 }
 
 .diff-export .stat-modifications {
-  background: #d1ecf1;
-  color: #0c5460;
-  border: 1px solid #bee5eb;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #3b82f6;
 }
 
 .diff-export .stat-similarity {
@@ -202,18 +204,22 @@ const HTML_STYLES = `
   color: #111827 !important;
 }
 
-/* 确保span元素正确显示 */
+/* 确保span元素正确显示 - 与DiffViewer组件完全一致 */
 .diff-export .diff-content-display span {
-  border-radius: 2px;
-  padding: 1px 2px;
+  border-radius: 0.25rem; /* px-1 rounded */
+  padding: 0.25rem; /* px-1 */
   margin: 0 1px;
 }
 
+/* 新增的圆角样式 */
 .diff-export .diff-content-display span.bg-red-100,
 .diff-export .diff-content-display span.bg-green-100,
 .diff-export .diff-content-display span.bg-blue-100 {
+  border-radius: 0.25rem;
+  padding: 0.25rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
+
 
 /* 保留原有的行级样式作为备用 */
 .diff-export .diff-line {
@@ -289,13 +295,74 @@ const HTML_STYLES = `
 }
 
 .diff-export .legend-color.modify {
-  background: #fff3cd;
-  border-color: #ffc107;
+  background: #eff6ff;
+  border-color: #3b82f6;
 }
 
 .diff-export .legend-color.equal {
   background: white;
   border-color: #ddd;
+}
+
+/* 原文对比样式 */
+.diff-export .original-comparison {
+  background: white;
+  padding: 1.5em;
+  border-radius: 8px;
+  margin: 2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.diff-export .comparison-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2em;
+  margin-top: 1.5em;
+}
+
+.diff-export .comparison-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.diff-export .comparison-header {
+  background: #f8f9fa;
+  padding: 1em 1.5em;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.diff-export .comparison-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.1em;
+}
+
+.diff-export .file-info {
+  color: #666;
+  font-size: 0.9em;
+}
+
+.diff-export .comparison-content {
+  padding: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.diff-export .original-text {
+  margin: 0;
+  padding: 1.5em;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: white;
+  color: #333;
+  border: none;
 }
 
 .diff-export footer {
@@ -318,6 +385,11 @@ const HTML_STYLES = `
     grid-template-columns: 1fr;
   }
 
+  .diff-export .comparison-grid {
+    grid-template-columns: 1fr;
+    gap: 1em;
+  }
+
   .diff-export .legend-items {
     flex-direction: column;
     align-items: center;
@@ -330,6 +402,17 @@ const HTML_STYLES = `
 
   .diff-export .diff-line {
     padding: 0.25em 0.5em;
+  }
+
+  .diff-export .original-text {
+    font-size: 11px;
+    padding: 1em;
+  }
+
+  .diff-export .comparison-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5em;
   }
 }
 
@@ -410,8 +493,14 @@ function escapeHtml(text: string): string {
  */
 function createUnifiedSegments(
   diffResult: DiffResult
-): Array<{ content: string; type: string }> {
-  const segments: Array<{ content: string; type: string }> = []
+): Array<{
+  content: string | { oldContent: string; newContent: string };
+  type: string
+}> {
+  const segments: Array<{
+  content: string | { oldContent: string; newContent: string };
+  type: string
+}> = []
   const { text1, diffs } = diffResult
 
   // 如果没有差异，直接返回原文本
@@ -440,13 +529,16 @@ function createUnifiedSegments(
       segments.push({ content: diff.content, type: 'added' })
       // 新增不改变位置索引，保持在当前位置
     } else if (diff.type === 'modify') {
-      // 对于修改操作，使用与DiffViewer组件完全一致的方式
-      // 分解为删除+新增，保持与其他diff类型的一致性
-      if (diff.originalContent) {
-        segments.push({ content: diff.originalContent, type: 'deleted' })
-        currentIndex = diff.position + diff.originalContent.length
+      // 将修改操作显示为蓝色背景区域，包含原内容（删除线）和新内容
+      const modifySegment = {
+        content: {
+          oldContent: diff.originalContent || '',
+          newContent: diff.content
+        },
+        type: 'modified'
       }
-      segments.push({ content: diff.content, type: 'added' })
+      segments.push(modifySegment)
+      currentIndex = diff.position + (diff.originalContent?.length || 0)
     }
   }
 
@@ -473,24 +565,29 @@ function generateDiffHTML(diffResult: DiffResult): string {
   const segments = createUnifiedSegments(diffResult)
 
   const segmentsHTML = segments.map(segment => {
-    const escapedContent = escapeHtml(segment.content)
-    let spanClass = ''
+    if (segment.type === 'modified' && typeof segment.content === 'object') {
+      // 修改操作：显示原内容(删除线) + 新内容，完全按照DiffViewer组件的方式
+      const oldContent = escapeHtml(segment.content.oldContent)
+      const newContent = escapeHtml(segment.content.newContent)
+      return `<span class="bg-blue-100 text-blue-900 px-1 rounded"><span class="line-through text-red-700">${oldContent}</span><span class="text-green-700">${newContent}</span></span>`
+    } else {
+      // 其他操作：正常显示
+      const escapedContent = escapeHtml(segment.content as string)
+      let spanClass = ''
 
-    switch (segment.type) {
-      case 'deleted':
-        spanClass = 'bg-red-100 text-red-900 line-through'
-        break
-      case 'added':
-        spanClass = 'bg-green-100 text-green-900'
-        break
-      case 'modified':
-        spanClass = 'bg-blue-100 text-blue-900'
-        break
-      default:
-        spanClass = 'text-gray-900'
+      switch (segment.type) {
+        case 'deleted':
+          spanClass = 'bg-red-100 text-red-900 line-through px-1 rounded'
+          break
+        case 'added':
+          spanClass = 'bg-green-100 text-green-900 px-1 rounded'
+          break
+        default:
+          spanClass = 'text-gray-900'
+      }
+
+      return `<span class="${spanClass}">${escapedContent}</span>`
     }
-
-    return `<span class="${spanClass}">${escapedContent}</span>`
   })
 
   return `<div class="diff-content-display">${segmentsHTML.join('')}</div>`
@@ -557,6 +654,40 @@ function generateStatsHTML(stats: DiffStats): string {
 }
 
 /**
+ * 生成原文对比HTML
+ */
+function generateOriginalComparisonHTML(data1: FileData, data2: FileData): string {
+  const escapedText1 = escapeHtml(data1.content)
+  const escapedText2 = escapeHtml(data2.content)
+
+  return `
+    <div class="original-comparison">
+      <h2>📄 原文对比</h2>
+      <div class="comparison-grid">
+        <div class="comparison-item">
+          <div class="comparison-header">
+            <h3>原文 1</h3>
+            <span class="file-info">${data1.name || '文本输入'} (${formatTextLength(data1.content)})</span>
+          </div>
+          <div class="comparison-content">
+            <pre class="original-text">${escapedText1}</pre>
+          </div>
+        </div>
+        <div class="comparison-item">
+          <div class="comparison-header">
+            <h3>原文 2</h3>
+            <span class="file-info">${data2.name || '文本输入'} (${formatTextLength(data2.content)})</span>
+          </div>
+          <div class="comparison-content">
+            <pre class="original-text">${escapedText2}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+/**
  * 生成图例HTML
  */
 function generateLegendHTML(): string {
@@ -598,6 +729,7 @@ function generateHTMLDocument(
 ): string {
   const metadataHTML = options.includeMetadata ? generateMetadataHTML(data1, data2, timestamp) : ''
   const statsHTML = options.includeStats ? generateStatsHTML(stats) : ''
+  const originalComparisonHTML = generateOriginalComparisonHTML(data1, data2)
   const legendHTML = generateLegendHTML()
   const diffHTML = generateDiffHTML(diffResult)
 
@@ -609,8 +741,8 @@ function generateHTMLDocument(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="generator" content="文本差异对比工具 - Text Diff Viewer">
-    <meta name="description" content="文本差异对比报告 - 使用diff-match-patch算法生成的精确对比结果">
-    <meta name="keywords" content="差异对比,文本比较,版本对比,diff,文本分析">
+    <meta name="description" content="文本差异对比报告 - 使用Levenshtein算法生成的精确对比结果">
+    <meta name="keywords" content="差异对比,文本比较,版本对比,diff,文本分析,Levenshtein">
     <meta name="author" content="Text Diff Viewer">
     <title>${escapeHtml(pageTitle)}</title>
     <style>
@@ -626,6 +758,8 @@ ${HTML_STYLES}
         ${metadataHTML}
 
         ${statsHTML}
+
+        ${originalComparisonHTML}
 
         <main>
             <div class="diff-content">
@@ -643,7 +777,7 @@ ${HTML_STYLES}
 
         <footer>
             <p>此报告由 <strong>文本差异对比工具</strong> 生成</p>
-            <p>使用 diff-match-patch 算法实现字符级精确差异检测</p>
+            <p>使用 Levenshtein 算法实现字符级精确差异检测</p>
             <p>生成时间: ${new Date(timestamp).toLocaleString('zh-CN')}</p>
         </footer>
     </div>
